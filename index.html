@@ -44,10 +44,12 @@
   const card = document.getElementById('cardContainer');
   const nfcSplash = document.getElementById('nfcSplash');
 
-  let scanCount = 0;
-  let cardScanned = false;
+  let scanCount = 0;      // compteur de scan
+  let cardScanned = false; // état de la carte (true = déjà scannée)
 
   function renderLogin() {
+    scanCount = 0;        // reset compteur à la connexion
+    cardScanned = false;  // reset état de la carte
     card.innerHTML = `
       <div class="topbar"><div></div><div style="font-weight:700">PilouTransport</div></div>
       <h1>Connexion</h1>
@@ -126,20 +128,21 @@
     }, 2000);
   }
 
-  // simulate NFC scan
   function scanCard() {
     if(!localStorage.getItem('pilou_logged')) return;
     if(cardScanned){
-      showNfcSplash(false); // red background
+      // carte déjà scannée -> rouge, compteur inchangé
+      showNfcSplash(false);
       return;
     }
+    // premier scan -> vert, compteur +1
     cardScanned = true;
     scanCount++;
     document.getElementById('scanCounter').textContent = scanCount;
     showNfcSplash(true);
   }
 
-  // For demo purpose: scan card on click of main container
+  // pour test/demo : scanner en cliquant sur le container
   document.getElementById('main').addEventListener('click', scanCard);
 
   function init() {
