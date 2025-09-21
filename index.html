@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>PilouTransport — Connexion</title>
 <style>
-  :root{--green:#0b8f3b;--dark:#0f1720;--muted:#888;--error:#d9534f}
+  :root{--green:#0b8f3b;--dark:#0f1720;--muted:#888;--error:#d9534f;--red:#d9534f}
   *{box-sizing:border-box}
   html,body{height:100%;margin:0;background:#05060a;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial}
   .center{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -17,31 +17,24 @@
   button{width:100%;padding:12px;border-radius:10px;border:0;background:var(--green);color:#fff;font-weight:600;font-size:15px;cursor:pointer}
   .error{color:var(--error);font-size:13px;margin-top:8px;text-align:center}
   .muted{color:var(--muted);font-size:13px;text-align:center;margin-top:10px}
-  /* PilouTransport full screen */
-  .fullscreen {
-    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#05060a;z-index:30;
-  }
+  .fullscreen {position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#05060a;z-index:30;}
   .pilou-text{font-size:36px;font-weight:700;color:#e6eef8}
-  /* green NFC splash */
   .nfc-splash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--green);z-index:60;transition:opacity .25s}
   .nfc-name{font-size:34px;font-weight:700;color:#fff}
   .topbar {display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
-  .logout {background:transparent;border:1px solid rgba(255,255,255,0.06);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
+  .logout, .reset-btn {background:transparent;border:1px solid rgba(255,255,255,0.06);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;margin-left:8px}
+  .counter {font-size:20px;font-weight:700;color:#fff;text-align:center;margin-top:12px}
   @media (max-width:480px){.pilou-text{font-size:28px}}
 </style>
 </head>
 <body>
-  <!-- NFC splash (hidden by default) -->
+  <!-- NFC splash -->
   <div id="nfcSplash" class="nfc-splash" style="display:none;opacity:0">
-    <div class="nfc-name">Ruben Vega</div>
+    <div class="nfc-name" id="nfcName">Ruben Vega</div>
   </div>
 
-  <!-- Main content container -->
   <div id="main" class="center">
-    <!-- Card content will be injected by JS -->
-    <div class="card" id="cardContainer">
-      <!-- content replaced by JS -->
-    </div>
+    <div class="card" id="cardContainer"></div>
   </div>
 
 <script>
@@ -51,7 +44,9 @@
   const card = document.getElementById('cardContainer');
   const nfcSplash = document.getElementById('nfcSplash');
 
-  // helper renderers
+  let scanCount = 0;
+  let cardScanned = false;
+
   function renderLogin() {
     card.innerHTML = `
       <div class="topbar"><div></div><div style="font-weight:700">PilouTransport</div></div>
@@ -66,10 +61,8 @@
       </div>
       <div class="row"><button id="btnConnect">Connecter</button></div>
       <div id="error" class="error" style="display:none"></div>
-      <div class="muted">Identifiant example: <strong>ruben.vega</strong></div>
     `;
     document.getElementById('btnConnect').addEventListener('click', tryLogin);
-    // allow Enter key
     document.getElementById('pwd').addEventListener('keydown', function(e){
       if(e.key === 'Enter') tryLogin();
     });
@@ -79,16 +72,25 @@
     card.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <div style="font-weight:700">PilouTransport</div>
-        <button id="logoutBtn" class="logout">Se déconnecter</button>
+        <div>
+          <button id="logoutBtn" class="logout">Se déconnecter</button>
+          <button id="resetBtn" class="reset-btn">Reset</button>
+        </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:center;height:160px">
         <div class="pilou-text">PilouTransport</div>
       </div>
       <div class="muted">Présente ta carte NFC pour l’écran d’identification.</div>
+      <div class="counter">👥 <span id="scanCounter">0</span></div>
     `;
     document.getElementById('logoutBtn').addEventListener('click', ()=>{
       localStorage.removeItem('pilou_logged');
       renderLogin();
+    });
+    document.getElementById('resetBtn').addEventListener('click', ()=>{
+      cardScanned = false;
+      scanCount = 0;
+      document.getElementById('scanCounter').textContent = scanCount;
     });
   }
 
@@ -96,12 +98,10 @@
     const el = document.getElementById('error');
     el.textContent = msg;
     el.style.display = 'block';
-    // clear inputs
     const i = document.getElementById('ident');
     const p = document.getElementById('pwd');
     if(i) i.value = '';
     if(p) p.value = '';
-    // hide after 3s
     setTimeout(()=>{ if(el) el.style.display='none' }, 3000);
   }
 
@@ -116,60 +116,42 @@
     }
   }
 
-  // NFC splash control
-  function showNfcSplash() {
+  function showNfcSplash(success = true) {
     nfcSplash.style.display = 'flex';
-    // force reflow for transition
+    nfcSplash.style.background = success ? 'var(--green)' : 'var(--red)';
     requestAnimationFrame(()=> nfcSplash.style.opacity = '1');
     setTimeout(()=> {
       nfcSplash.style.opacity = '0';
       setTimeout(()=> nfcSplash.style.display = 'none', 300);
-    }, 4000); // 4s visible
+    }, 2000);
   }
 
-  // Decide what to render initially
-  function init() {
-    // If URL contains ?nfc=1, show NFC splash behaviour
-    const params = new URLSearchParams(window.location.search);
-    const isNfc = params.get('nfc') === '1';
-
-    const logged = localStorage.getItem('pilou_logged') === '1';
-
-    // If NFC param present:
-    if(isNfc) {
-      // If logged in -> show green splash, then after hide go to PilouTransport
-      if(logged) {
-        showNfcSplash();
-        // after splash finishes, show PilouTransport
-        setTimeout(() => {
-          renderPilouTransport();
-        }, 4300);
-      } else {
-        // not logged: still show splash? we can show splash then go to login
-        showNfcSplash();
-        setTimeout(() => {
-          renderLogin();
-        }, 4300);
-      }
+  // simulate NFC scan
+  function scanCard() {
+    if(!localStorage.getItem('pilou_logged')) return;
+    if(cardScanned){
+      showNfcSplash(false); // red background
       return;
     }
+    cardScanned = true;
+    scanCount++;
+    document.getElementById('scanCounter').textContent = scanCount;
+    showNfcSplash(true);
+  }
 
-    // not NFC param: normal flow
-    if(logged) {
+  // For demo purpose: scan card on click of main container
+  document.getElementById('main').addEventListener('click', scanCard);
+
+  function init() {
+    const logged = localStorage.getItem('pilou_logged') === '1';
+    if(logged){
       renderPilouTransport();
     } else {
       renderLogin();
     }
   }
 
-  // run
   init();
-
-  // Expose a small helper for debugging (optional)
-  window.__Pilou = {
-    logout(){ localStorage.removeItem('pilou_logged'); renderLogin(); },
-    login(){ localStorage.setItem('pilou_logged','1'); renderPilouTransport(); }
-  };
 
 })();
 </script>
